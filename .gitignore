@@ -1,0 +1,9 @@
+node_modules/
+dist/
+storage/images/*.png
+storage/logos/*
+!storage/images/.gitkeep
+!storage/logos/.gitkeep
+.env
+*.log
+.DS_Store

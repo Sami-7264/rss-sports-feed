@@ -1,0 +1,65 @@
+[
+  {
+    "id": "nba-phi-chi-20260224",
+    "league": "NBA",
+    "home": {
+      "name": "Chicago Bulls",
+      "abbr": "CHI",
+      "color": "#CE1141",
+      "record": "5-3",
+      "logoUrl": ""
+    },
+    "away": {
+      "name": "Philadelphia 76ers",
+      "abbr": "PHI",
+      "color": "#006BB6",
+      "record": "6-2",
+      "logoUrl": ""
+    },
+    "score": { "home": 113, "away": 111 },
+    "status": { "state": "in_progress", "period": 4, "clock": "3:52" },
+    "updatedAt": "2026-02-24T20:30:00Z"
+  },
+  {
+    "id": "nba-lal-bos-20260224",
+    "league": "NBA",
+    "home": {
+      "name": "Boston Celtics",
+      "abbr": "BOS",
+      "color": "#007A33",
+      "record": "7-1",
+      "logoUrl": ""
+    },
+    "away": {
+      "name": "Los Angeles Lakers",
+      "abbr": "LAL",
+      "color": "#552583",
+      "record": "4-4",
+      "logoUrl": ""
+    },
+    "score": { "home": 98, "away": 102 },
+    "status": { "state": "final" },
+    "updatedAt": "2026-02-24T19:00:00Z"
+  },
+  {
+    "id": "nba-gsw-mia-20260224",
+    "league": "NBA",
+    "home": {
+      "name": "Miami Heat",
+      "abbr": "MIA",
+      "color": "#98002E",
+      "record": "3-5",
+      "logoUrl": ""
+    },
+    "away": {
+      "name": "Golden State Warriors",
+      "abbr": "GSW",
+      "color": "#1D428A",
+      "record": "5-3",
+      "logoUrl": ""
+    },
+    "score": { "home": 0, "away": 0 },
+    "status": { "state": "pre", "detail": "7:30 PM ET" },
+    "updatedAt": "2026-02-24T12:00:00Z"
+  }
+]

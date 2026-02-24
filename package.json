@@ -1,0 +1,22 @@
+{
+  "name": "rss-sports-feed",
+  "version": "1.0.0",
+  "description": "High-resolution RSS sports ticker with images for NovaStar media player",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc",
+    "serve": "node dist/server.js"
+  },
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
