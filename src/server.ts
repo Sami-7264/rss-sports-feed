@@ -87,8 +87,12 @@ app.use(async (_req, _res, next) => {
 });
 
 // RSS feed
-app.get('/rss.xml', (_req, res) => {
-  const xml = generateRss(currentGames);
+app.get('/rss.xml', (req, res) => {
+  // Use the actual request host so image URLs work regardless of VERCEL_URL
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const requestBaseUrl = `${protocol}://${host}`;
+  const xml = generateRss(currentGames, requestBaseUrl);
   res.set({
     'Content-Type': 'application/rss+xml; charset=utf-8',
     'Cache-Control': 'public, max-age=30',
