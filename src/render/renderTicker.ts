@@ -23,7 +23,7 @@ export async function renderTickerImage(game: Game, logoCache: LogoCache): Promi
 
   const canvas = createCanvas(W * scaleFactor, H * scaleFactor);
   const ctx = canvas.getContext('2d');
-  ctx.scale(scaleFactor, scaleFactor);
+  ctx.scale(scaleFactor, scaleFactor); 
 
   // ── Layout geometry ────────────────────────────────────────────────
   const t = config.ticker;

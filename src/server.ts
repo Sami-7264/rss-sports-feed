@@ -207,7 +207,7 @@ app.get('/preview', (_req, res) => {
     .info code{background:#1a1a1a;padding:2px 6px;border-radius:3px;color:#4af;font-size:12px}
     .info pre{background:#1a1a1a;padding:10px;border-radius:4px;margin:8px 0;overflow-x:auto;font-size:12px;color:#ccc}
   </style>
-</head>
+</head> 
 <body>
   <h1>Sports Ticker Preview</h1>
   <p class="subtitle">
