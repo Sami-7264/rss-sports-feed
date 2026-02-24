@@ -22,7 +22,7 @@ export const config = {
   },
 
   fonts: {
-    family: 'Arial, Helvetica, sans-serif',
+    family: 'Inter, Arial, Helvetica, sans-serif',
     score:         { size: 46, weight: 'bold'   as const },
     teamAbbr:      { size: 28, weight: 'bold'   as const },
     record:        { size: 13, weight: 'normal' as const },

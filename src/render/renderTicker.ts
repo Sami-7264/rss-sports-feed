@@ -1,7 +1,24 @@
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
+import * as path from 'path';
 import { Game, Team } from '../types';
 import { config } from '../config';
 import { LogoCache } from '../utils/logoCache';
+
+// ── Register bundled fonts (needed on Vercel / Linux where Arial is missing) ──
+const fontsDir = path.resolve(__dirname, '..', '..', 'fonts');
+try {
+  GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-Regular.ttf'), 'Inter');
+  GlobalFonts.registerFromPath(path.join(fontsDir, 'Inter-Bold.ttf'), 'Inter');
+} catch {
+  // Fonts may already be registered or path may differ in compiled output
+  try {
+    const altFontsDir = path.resolve(process.cwd(), 'fonts');
+    GlobalFonts.registerFromPath(path.join(altFontsDir, 'Inter-Regular.ttf'), 'Inter');
+    GlobalFonts.registerFromPath(path.join(altFontsDir, 'Inter-Bold.ttf'), 'Inter');
+  } catch {
+    console.warn('[Fonts] Could not register bundled Inter fonts — text may not render');
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Broadcast-style scoreboard ticker renderer
