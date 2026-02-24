@@ -1,4 +1,4 @@
-import { createCanvas, loadImage } from 'canvas';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { Game, Team } from '../types';
 import { config } from '../config';
 import { LogoCache } from '../utils/logoCache';
