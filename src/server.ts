@@ -58,8 +58,33 @@ async function refreshData(): Promise<void> {
   }
 }
 
+// ── Lazy initialization (for serverless cold starts) ───────────────────
+let initialized = false;
+
+async function ensureInitialized(): Promise<void> {
+  if (initialized) return;
+  console.log('Initializing RSS Sports Ticker...');
+  console.log(`  Provider:    ${config.dataProvider}`);
+  console.log(`  Resolution:  ${config.display.width}x${config.display.height} (${config.display.scaleFactor}x render)`);
+  console.log(`  Environment: ${config.isVercel ? 'Vercel (serverless)' : 'local'}`);
+  await imageCache.initialize();
+  await logoCache.initialize();
+  await refreshData();
+  initialized = true;
+}
+
 // ── Express app ────────────────────────────────────────────────────────
 const app = express();
+
+// Init middleware — ensures data/images are ready before handling requests
+app.use(async (_req, _res, next) => {
+  try {
+    await ensureInitialized();
+  } catch (err) {
+    console.error('[Init] Failed:', err);
+  }
+  next();
+});
 
 // RSS feed
 app.get('/rss.xml', (_req, res) => {
@@ -223,33 +248,29 @@ app.get('/', (_req, res) => {
   res.redirect('/preview');
 });
 
-// ── Start ──────────────────────────────────────────────────────────────
-async function start(): Promise<void> {
-  console.log('Initializing RSS Sports Ticker...');
-  console.log(`  Provider:    ${config.dataProvider}`);
-  console.log(`  Resolution:  ${config.display.width}x${config.display.height} (${config.display.scaleFactor}x render)`);
-  console.log(`  Refresh:     every ${config.cache.refreshIntervalMs / 1000}s`);
+// ── Local dev: start server with listen + background refresh ───────────
+if (!config.isVercel) {
+  (async () => {
+    await ensureInitialized();
 
-  await imageCache.initialize();
-  await logoCache.initialize();
-  await refreshData();
+    // Background refresh only makes sense with a persistent server
+    setInterval(() => {
+      refreshData();
+    }, config.cache.refreshIntervalMs);
 
-  // Schedule periodic refresh
-  setInterval(() => {
-    refreshData();
-  }, config.cache.refreshIntervalMs);
-
-  app.listen(config.server.port, config.server.host, () => {
-    console.log('');
-    console.log(`Server running at ${config.server.baseUrl}`);
-    console.log(`  RSS Feed:  ${config.server.baseUrl}/rss.xml`);
-    console.log(`  Preview:   ${config.server.baseUrl}/preview`);
-    console.log(`  Health:    ${config.server.baseUrl}/health`);
-    console.log('');
+    app.listen(config.server.port, config.server.host, () => {
+      console.log('');
+      console.log(`Server running at ${config.server.baseUrl}`);
+      console.log(`  RSS Feed:  ${config.server.baseUrl}/rss.xml`);
+      console.log(`  Preview:   ${config.server.baseUrl}/preview`);
+      console.log(`  Health:    ${config.server.baseUrl}/health`);
+      console.log('');
+    });
+  })().catch((err) => {
+    console.error('Fatal startup error:', err);
+    process.exit(1);
   });
 }
 
-start().catch((err) => {
-  console.error('Fatal startup error:', err);
-  process.exit(1);
-});
+// ── Export for Vercel serverless ────────────────────────────────────────
+export default app;

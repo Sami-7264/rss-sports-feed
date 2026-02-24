@@ -1,8 +1,10 @@
+const isVercel = !!process.env.VERCEL;
+
 export const config = {
   server: {
     port: parseInt(process.env.PORT || '3000', 10),
     host: process.env.HOST || '0.0.0.0',
-    baseUrl: process.env.BASE_URL || 'http://localhost:3000',
+    baseUrl: process.env.BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
   },
 
   display: {
@@ -51,10 +53,13 @@ export const config = {
     refreshIntervalMs: 60_000,   // data refresh every 60s
   },
 
+  // Vercel has read-only filesystem — use /tmp for generated files
   storage: {
-    imagesDir: './storage/images',
-    logosDir: './storage/logos',
+    imagesDir: isVercel ? '/tmp/storage/images' : './storage/images',
+    logosDir:  isVercel ? '/tmp/storage/logos'  : './storage/logos',
   },
+
+  isVercel,
 
   dataProvider: (process.env.DATA_PROVIDER || 'mock') as 'mock' | 'api',
 };
