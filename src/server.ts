@@ -100,7 +100,7 @@ app.get('/rss.xml', (req, res) => {
   res.send(xml);
 });
 
-// Ticker images
+// Ticker images (cached path — used by preview page)
 app.get('/images/:id.png', async (req, res) => {
   const id = req.params.id;
   const buffer = imageCache.get(id);
@@ -122,6 +122,48 @@ app.get('/images/:id.png', async (req, res) => {
   }
 
   res.status(404).json({ error: 'Image not found', id });
+});
+
+// On-demand image endpoint — renders fresh, no cache dependency
+// This is what the RSS feed points to, so NovaStar always gets a valid PNG
+app.get('/api/image', async (req, res) => {
+  const id = req.query.id as string;
+  if (!id) {
+    res.status(400).set('Content-Type', 'text/plain').send('Missing id parameter');
+    return;
+  }
+
+  // Try in-memory cache first (fast path)
+  const cached = imageCache.get(id);
+  if (cached) {
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=30',
+    });
+    res.send(cached);
+    return;
+  }
+
+  // Render on-demand — find the game and generate the image
+  const game = currentGames.find((g) => g.id === id);
+  if (!game) {
+    res.status(404).set('Content-Type', 'text/plain').send('Game not found');
+    return;
+  }
+
+  try {
+    const buffer = await renderTickerImage(game, logoCache);
+    // Cache it for subsequent requests
+    await imageCache.set(game.id, buffer, game.updatedAt);
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=30',
+    });
+    res.send(buffer);
+  } catch (err) {
+    console.error(`[Image] Failed to render ${id}:`, err);
+    res.status(500).set('Content-Type', 'text/plain').send('Failed to render image');
+  }
 });
 
 // Health check

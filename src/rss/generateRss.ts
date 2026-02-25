@@ -35,24 +35,24 @@ function formatDescription(game: Game): string {
 export function generateRss(games: Game[], requestBaseUrl?: string): string {
   const baseUrl = requestBaseUrl || config.server.baseUrl;
   const now = new Date().toUTCString();
+  const { width, height } = config.display;
 
   const items = games
     .map((game) => {
       const title = escapeXml(formatTitle(game));
-      const descText = escapeXml(formatDescription(game));
-      const imageUrl = `${baseUrl}/images/${game.id}.png`;
+      const descText = formatDescription(game);
+      // On-demand image endpoint — renders fresh, no cache dependency
+      const imageUrl = `${baseUrl}/api/image?id=${encodeURIComponent(game.id)}`;
       const pubDate = new Date(game.updatedAt).toUTCString();
-
-      // Include an inline <img> in description — many media players (including NovaStar)
-      // read HTML description content rather than relying solely on <enclosure>
-      const descHtml = `<![CDATA[<img src="${imageUrl}" width="${config.display.width}" height="${config.display.height}" /><br/>${descText}]]>`;
 
       return `    <item>
       <title>${title}</title>
-      <description>${descHtml}</description>
+      <description><![CDATA[<img src="${imageUrl}" width="${width}" height="${height}" alt="${escapeXml(descText)}" /><br/>${escapeXml(descText)}]]></description>
       <guid isPermaLink="false">${escapeXml(game.id)}</guid>
       <pubDate>${pubDate}</pubDate>
-      <enclosure url="${escapeXml(imageUrl)}" type="image/png" length="50000"/>
+      <enclosure url="${imageUrl}" type="image/png" length="50000"/>
+      <media:content url="${imageUrl}" type="image/png" medium="image" width="${width}" height="${height}"/>
+      <media:thumbnail url="${imageUrl}" width="${width}" height="${height}"/>
     </item>`;
     })
     .join('\n');
