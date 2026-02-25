@@ -86,46 +86,37 @@ app.use(async (_req, _res, next) => {
   next();
 });
 
-// RSS feed
-app.get('/rss.xml', (req, res) => {
-  // Use the actual request host so image URLs work regardless of VERCEL_URL
+// ═══════════════════════════════════════════════════════════════════════
+//  CORE API ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════
+
+// Lightweight JSON endpoint — ticker.html fetches this every 60s
+// Returns game data + stable image URLs (no cache-busting params)
+app.get('/api/games', (req, res) => {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers.host || '';
-  const requestBaseUrl = `${protocol}://${host}`;
-  const xml = generateRss(currentGames, requestBaseUrl);
+  const base = `${protocol}://${host}`;
+
+  const games = currentGames.map((g) => ({
+    id: g.id,
+    league: g.league,
+    away: { abbr: g.away.abbr, name: g.away.name, color: g.away.color, record: g.away.record, logoUrl: g.away.logoUrl || '' },
+    home: { abbr: g.home.abbr, name: g.home.name, color: g.home.color, record: g.home.record, logoUrl: g.home.logoUrl || '' },
+    score: g.score,
+    status: g.status,
+    // Stable image URL — same URL per game, no cache-busting params
+    imageUrl: `${base}/api/image?id=${encodeURIComponent(g.id)}`,
+  }));
+
   res.set({
-    'Content-Type': 'application/rss+xml; charset=utf-8',
-    'Cache-Control': 'public, max-age=30',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, max-age=20, s-maxage=20, stale-while-revalidate=60',
+    'Access-Control-Allow-Origin': '*',
   });
-  res.send(xml);
+  res.json({ games, updated: lastUpdate.toISOString() });
 });
 
-// Ticker images (cached path — used by preview page)
-app.get('/images/:id.png', async (req, res) => {
-  const id = req.params.id;
-  const buffer = imageCache.get(id);
-  if (buffer) {
-    res.set({
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=30',
-    });
-    res.send(buffer);
-    return;
-  }
-
-  // Try disk fallback
-  const diskBuffer = await imageCache.loadFromDisk(id);
-  if (diskBuffer) {
-    res.set({ 'Content-Type': 'image/png' });
-    res.send(diskBuffer);
-    return;
-  }
-
-  res.status(404).json({ error: 'Image not found', id });
-});
-
-// On-demand image endpoint — renders fresh, no cache dependency
-// This is what the RSS feed points to, so NovaStar always gets a valid PNG
+// On-demand image endpoint — returns cached PNG or renders fresh
 app.get('/api/image', async (req, res) => {
   const id = req.query.id as string;
   if (!id) {
@@ -138,7 +129,7 @@ app.get('/api/image', async (req, res) => {
   if (cached) {
     res.set({
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=30',
+      'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
     });
     res.send(cached);
     return;
@@ -153,17 +144,374 @@ app.get('/api/image', async (req, res) => {
 
   try {
     const buffer = await renderTickerImage(game, logoCache);
-    // Cache it for subsequent requests
     await imageCache.set(game.id, buffer, game.updatedAt);
     res.set({
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=30',
+      'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
     });
     res.send(buffer);
   } catch (err) {
     console.error(`[Image] Failed to render ${id}:`, err);
     res.status(500).set('Content-Type', 'text/plain').send('Failed to render image');
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  NOVASTAR TICKER PAGE — CSS-rendered broadcast scoreboard
+//
+//  Loads ONCE, fetches /api/games every 60s, renders with CSS locally.
+//  Rotates every 8s with crossfade. Animated LIVE pulse.
+//  ~1 JSON request/min + logo images cached by browser.
+// ═══════════════════════════════════════════════════════════════════════
+app.get('/ticker.html', (_req, res) => {
+  const W = config.display.width;   // 384
+  const H = config.display.height;  // 192
+  const ROW_H = 80;
+  const STATUS_H = H - ROW_H * 2 - 1; // 31
+  const SCORE_W = 114;
+  const INFO_W = W - SCORE_W;       // 270
+  const LOGO_SZ = 70;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=${W},height=${H},initial-scale=1,user-scalable=no"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${W}px;height:${H}px;overflow:hidden;background:#000;
+  font-family:'Inter',-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+
+/* ── Game slides ── */
+.game{position:absolute;top:0;left:0;width:${W}px;height:${H}px;
+  opacity:0;transition:opacity 0.8s ease;pointer-events:none}
+.game.active{opacity:1}
+
+/* ── Team row ── */
+.row{display:flex;width:${W}px;height:${ROW_H}px;position:relative}
+.row-info{display:flex;align-items:center;width:${INFO_W}px;height:${ROW_H}px;
+  padding-left:6px;position:relative;overflow:hidden}
+.row-info::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,0.10) 0%,transparent 50%,rgba(0,0,0,0.22) 100%);
+  pointer-events:none}
+
+/* ── Score panel ── */
+.score-panel{width:${SCORE_W}px;height:${ROW_H}px;background:#141414;
+  display:flex;align-items:center;justify-content:center;border-left:2px solid #000}
+.score-val{font-size:46px;font-weight:900;color:#fff;
+  text-shadow:1px 2px 4px rgba(0,0,0,0.7)}
+.score-dash{font-size:26px;font-weight:700;color:#444}
+
+/* ── Logo ── */
+.logo-wrap{width:${LOGO_SZ}px;height:${LOGO_SZ}px;min-width:${LOGO_SZ}px;
+  border-radius:50%;overflow:hidden;position:relative;z-index:1;
+  background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center}
+.logo-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.logo-fb{font-size:25px;font-weight:900;color:#fff;display:none}
+.logo-wrap.no-img .logo-fb{display:flex}
+.logo-wrap.no-img img{display:none}
+.logo-wrap.no-img{border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.35)}
+
+/* ── Team text ── */
+.t-text{margin-left:10px;position:relative;z-index:1;overflow:hidden}
+.t-abbr{font-size:28px;font-weight:900;color:#fff;line-height:1.1;
+  text-shadow:0 1px 2px rgba(0,0,0,0.4)}
+.t-rec{font-size:13px;font-weight:400;color:rgba(255,255,255,0.55);margin-top:1px}
+
+/* ── Divider ── */
+.divider{width:${W}px;height:1px;background:#000}
+
+/* ── Winner accent bar ── */
+.winner-bar{position:absolute;bottom:0;right:0;width:${SCORE_W - 40}px;height:3px;
+  margin-right:20px;border-radius:1px}
+
+/* ── Status bar ── */
+.status{display:flex;align-items:center;width:${W}px;height:${STATUS_H}px;
+  background:#0c0c0c;border-top:1px solid #333;padding:0 8px}
+.s-league{font-size:12px;font-weight:700;color:#888;min-width:36px}
+.s-clock{flex:1;text-align:center;font-size:14px;font-weight:700;color:#fff}
+.s-clock.final{color:#999}
+.s-clock.pre{color:#4499ff}
+.s-live{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#ff3333;min-width:50px;justify-content:flex-end}
+.s-live-dot{width:8px;height:8px;border-radius:50%;background:#ff3333;
+  animation:pulse 2s ease-in-out infinite}
+.s-live.hidden{visibility:hidden}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+</style>
+</head>
+<body>
+<div id="ct"></div>
+<script>
+(function(){
+var ct=document.getElementById('ct');
+var games=[],slides=[],cur=0,timer=null;
+
+function fetchGames(){
+  var x=new XMLHttpRequest();
+  x.open('GET','/api/games',true);
+  x.timeout=15000;
+  x.onload=function(){
+    if(x.status!==200)return;
+    try{
+      var d=JSON.parse(x.responseText);
+      if(d.games&&d.games.length>0)update(d.games);
+    }catch(e){}
+  };
+  x.send();
+}
+
+function update(ng){
+  var changed=ng.length!==games.length;
+  if(!changed){
+    for(var i=0;i<ng.length;i++){
+      if(ng[i].id!==games[i].id){changed=true;break;}
+    }
+  }
+  games=ng;
+  if(changed){rebuild();}
+  else{refreshData();}
+}
+
+function rebuild(){
+  if(timer){clearInterval(timer);timer=null;}
+  cur=0;
+  ct.innerHTML='';
+  slides=[];
+  for(var i=0;i<games.length;i++){
+    var el=buildGame(games[i]);
+    if(i===0)el.className='game active';
+    ct.appendChild(el);
+    slides.push(el);
+  }
+  if(games.length>1)timer=setInterval(rotate,8000);
+}
+
+function refreshData(){
+  for(var i=0;i<games.length;i++){
+    var g=games[i];
+    var s=slides[i];
+    if(!s)continue;
+    // Update scores
+    var sv=s.querySelectorAll('.score-val');
+    if(g.status.state==='pre'){
+      if(sv[0])sv[0].textContent='\\u2013';
+      if(sv[1])sv[1].textContent='\\u2013';
+      if(sv[0])sv[0].className='score-val score-dash';
+      if(sv[1])sv[1].className='score-val score-dash';
+    }else{
+      if(sv[0]){sv[0].textContent=g.score.away;sv[0].className='score-val';}
+      if(sv[1]){sv[1].textContent=g.score.home;sv[1].className='score-val';}
+    }
+    // Update status
+    var cl=s.querySelector('.s-clock');
+    var lv=s.querySelector('.s-live');
+    if(g.status.state==='in_progress'){
+      cl.textContent='Q'+(g.status.period||'?')+' \\u00B7 '+(g.status.clock||'');
+      cl.className='s-clock';
+      lv.className='s-live';
+    }else if(g.status.state==='final'){
+      cl.textContent='FINAL';
+      cl.className='s-clock final';
+      lv.className='s-live hidden';
+    }else{
+      cl.textContent=g.status.detail||'UPCOMING';
+      cl.className='s-clock pre';
+      lv.className='s-live hidden';
+    }
+    // Update winner bars
+    var wb=s.querySelectorAll('.winner-bar');
+    if(g.status.state==='final'){
+      var aw=g.score.away>g.score.home;
+      if(wb[0])wb[0].style.background=aw?g.away.color:'transparent';
+      if(wb[1])wb[1].style.background=(!aw)?g.home.color:'transparent';
+    }else{
+      if(wb[0])wb[0].style.background='transparent';
+      if(wb[1])wb[1].style.background='transparent';
+    }
+  }
+}
+
+function buildGame(g){
+  var d=document.createElement('div');
+  d.className='game';
+
+  var isPre=g.status.state==='pre';
+  var isFinal=g.status.state==='final';
+  var isLive=g.status.state==='in_progress';
+  var awayWin=isFinal&&g.score.away>g.score.home;
+  var homeWin=isFinal&&g.score.home>g.score.away;
+
+  // Status text
+  var clockText='',clockClass='s-clock';
+  if(isLive){
+    clockText='Q'+(g.status.period||'?')+' \\u00B7 '+(g.status.clock||'');
+  }else if(isFinal){
+    clockText='FINAL';clockClass='s-clock final';
+  }else{
+    clockText=g.status.detail||'UPCOMING';clockClass='s-clock pre';
+  }
+
+  d.innerHTML=
+    teamRow(g.away,isPre?'\\u2013':g.score.away,isPre,awayWin)+
+    '<div class="divider"></div>'+
+    teamRow(g.home,isPre?'\\u2013':g.score.home,isPre,homeWin)+
+    '<div class="status">'+
+      '<span class="s-league">'+esc(g.league)+'</span>'+
+      '<span class="'+clockClass+'">'+esc(clockText)+'</span>'+
+      '<span class="s-live'+(isLive?'':' hidden')+'"><span class="s-live-dot"></span>LIVE</span>'+
+    '</div>';
+
+  return d;
+}
+
+function teamRow(team,score,isPre,isWinner){
+  var scoreClass=isPre?'score-val score-dash':'score-val';
+  return '<div class="row">'+
+    '<div class="row-info" style="background:'+team.color+'">'+
+      logoHtml(team)+
+      '<div class="t-text">'+
+        '<div class="t-abbr">'+esc(team.abbr)+'</div>'+
+        (team.record?'<div class="t-rec">'+esc(team.record)+'</div>':'')+
+      '</div>'+
+    '</div>'+
+    '<div class="score-panel">'+
+      '<span class="'+scoreClass+'">'+esc(String(score))+'</span>'+
+      (isWinner?'<div class="winner-bar" style="background:'+team.color+'"></div>':
+                '<div class="winner-bar"></div>')+
+    '</div>'+
+  '</div>';
+}
+
+function logoHtml(team){
+  if(!team.logoUrl){
+    return '<div class="logo-wrap no-img"><span class="logo-fb">'+esc(team.abbr)+'</span></div>';
+  }
+  return '<div class="logo-wrap" id="lw-'+esc(team.abbr)+'">'+
+    '<img src="'+esc(team.logoUrl)+'" onerror="this.parentElement.className=\\'logo-wrap no-img\\'"/>'+
+    '<span class="logo-fb">'+esc(team.abbr)+'</span>'+
+  '</div>';
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function rotate(){
+  if(slides.length===0)return;
+  slides[cur].className='game';
+  cur=(cur+1)%slides.length;
+  slides[cur].className='game active';
+}
+
+fetchGames();
+setInterval(fetchGames,60000);
+})();
+</script>
+</body>
+</html>`;
+
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=300, s-maxage=300',
+  });
+  res.send(html);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  RSS FEED (kept for non-NovaStar consumers)
+// ═══════════════════════════════════════════════════════════════════════
+app.get('/rss.xml', (req, res) => {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const requestBaseUrl = `${protocol}://${host}`;
+  const xml = generateRss(currentGames, requestBaseUrl);
+  res.set({
+    'Content-Type': 'application/rss+xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
+  });
+  res.send(xml);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  LEGACY / UTILITY ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════
+
+// Ticker images (cached path — used by preview page)
+app.get('/images/:id.png', async (req, res) => {
+  const id = req.params.id;
+  const buffer = imageCache.get(id);
+  if (buffer) {
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=60',
+    });
+    res.send(buffer);
+    return;
+  }
+
+  const diskBuffer = await imageCache.loadFromDisk(id);
+  if (diskBuffer) {
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=30',
+    });
+    res.send(diskBuffer);
+    return;
+  }
+
+  res.status(404).json({ error: 'Image not found', id });
+});
+
+// Single rotating image — for NovaStar "Image URL" mode
+let rotationIndex = 0;
+app.get('/ticker.png', async (_req, res) => {
+  if (currentGames.length === 0) {
+    res.status(503).set('Content-Type', 'text/plain').send('No games available');
+    return;
+  }
+
+  const game = currentGames[rotationIndex % currentGames.length];
+  rotationIndex++;
+
+  const cached = imageCache.get(game.id);
+  if (cached) {
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=30',
+    });
+    res.send(cached);
+    return;
+  }
+
+  try {
+    const buffer = await renderTickerImage(game, logoCache);
+    await imageCache.set(game.id, buffer, game.updatedAt);
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=30',
+    });
+    res.send(buffer);
+  } catch (err) {
+    console.error('[ticker.png] render error:', err);
+    res.status(500).set('Content-Type', 'text/plain').send('Render failed');
+  }
+});
+
+// JSON playlist
+app.get('/playlist.json', (req, res) => {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const base = `${protocol}://${host}`;
+
+  const playlist = currentGames.map((g) => ({
+    id: g.id,
+    title: `${g.away.abbr} vs ${g.home.abbr}`,
+    imageUrl: `${base}/api/image?id=${encodeURIComponent(g.id)}`,
+    state: g.status.state,
+  }));
+
+  res.set({ 'Cache-Control': 'public, max-age=30, s-maxage=30' });
+  res.json({ games: playlist, count: playlist.length, updated: lastUpdate.toISOString() });
 });
 
 // Health check
@@ -182,7 +530,7 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Preview page — HTML with rendered ticker images at 1x and 2x zoom
+// Preview page
 app.get('/preview', (_req, res) => {
   const { width, height, scaleFactor } = config.display;
   const rssUrl = `${config.server.baseUrl}/rss.xml`;
@@ -198,13 +546,13 @@ app.get('/preview', (_req, res) => {
         <div class="preview-row">
           <div class="preview-col">
             <label>1&times; Actual LED size (${width}&times;${height})</label>
-            <img src="/images/${g.id}.png?t=${Date.now()}"
+            <img src="/api/image?id=${encodeURIComponent(g.id)}"
                  width="${width}" height="${height}"
                  alt="${g.away.abbr} vs ${g.home.abbr}" />
           </div>
           <div class="preview-col">
             <label>2&times; Zoom (inspect detail)</label>
-            <img src="/images/${g.id}.png?t=${Date.now()}"
+            <img src="/api/image?id=${encodeURIComponent(g.id)}"
                  width="${width * 2}" height="${height * 2}"
                  alt="${g.away.abbr} vs ${g.home.abbr}"
                  style="image-rendering: pixelated;" />
@@ -225,16 +573,11 @@ app.get('/preview', (_req, res) => {
     body{background:#0a0a0a;color:#eee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;padding:24px;max-width:1100px;margin:0 auto}
     h1{font-size:20px;margin-bottom:4px}
     .subtitle{color:#666;font-size:12px;margin-bottom:20px}
-
-    /* RSS URL box */
-    .rss-box{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:12px}
-    .rss-box label{color:#888;font-size:12px;white-space:nowrap}
-    .rss-box input{flex:1;background:#111;border:1px solid #444;color:#4af;padding:8px 12px;border-radius:4px;font-size:14px;font-family:monospace}
-    .rss-box button{background:#4af;color:#000;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:13px}
-    .rss-box button:hover{background:#5bf}
-    .rss-box .copied{color:#4f4;font-size:12px;display:none}
-
-    /* Ticker groups */
+    .url-box{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px}
+    .url-box label{color:#888;font-size:12px;white-space:nowrap;min-width:120px}
+    .url-box input{flex:1;background:#111;border:1px solid #444;color:#4af;padding:8px 12px;border-radius:4px;font-size:13px;font-family:monospace}
+    .url-box button{background:#4af;color:#000;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:13px}
+    .url-box button:hover{background:#5bf}
     .ticker-group{margin-bottom:32px}
     .ticker-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
     .ticker-label .id{color:#555;font-size:11px;font-family:monospace}
@@ -242,18 +585,11 @@ app.get('/preview', (_req, res) => {
     .badge.in_progress{background:#ff3333;color:#fff}
     .badge.final{background:#333;color:#aaa}
     .badge.pre{background:#1a3a5c;color:#4af}
-
     .preview-row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
     .preview-col label{display:block;color:#555;font-size:10px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
     .preview-col img{display:block;border:1px solid #333;background:#000}
-
-    /* Info box */
-    .info{background:#111;border:1px solid #333;border-radius:6px;padding:16px;margin-top:32px;font-size:13px;color:#888;line-height:1.7}
-    .info h3{color:#ccc;margin-bottom:8px;font-size:14px}
-    .info code{background:#1a1a1a;padding:2px 6px;border-radius:3px;color:#4af;font-size:12px}
-    .info pre{background:#1a1a1a;padding:10px;border-radius:4px;margin:8px 0;overflow-x:auto;font-size:12px;color:#ccc}
   </style>
-</head> 
+</head>
 <body>
   <h1>Sports Ticker Preview</h1>
   <p class="subtitle">
@@ -262,24 +598,26 @@ app.get('/preview', (_req, res) => {
     Output: ${width}&times;${height} (rendered at ${width * scaleFactor}&times;${height * scaleFactor} then downscaled)
   </p>
 
-  <div class="rss-box">
-    <label>RSS Feed URL:</label>
-    <input type="text" id="rssUrl" value="${rssUrl}" readonly onclick="this.select()" />
-    <button onclick="copyRss()">Copy URL</button>
-    <span class="copied" id="copiedMsg">Copied!</span>
+  <div class="url-box">
+    <label>NovaStar URL:</label>
+    <input type="text" value="${config.server.baseUrl}/ticker.html" readonly onclick="this.select()" />
+    <button onclick="copy(this)">Copy</button>
+  </div>
+  <div class="url-box">
+    <label>RSS Feed:</label>
+    <input type="text" value="${rssUrl}" readonly onclick="this.select()" />
+    <button onclick="copy(this)">Copy</button>
   </div>
 
   ${gameCards}
 
   <script>
-    function copyRss(){
-      const el=document.getElementById('rssUrl');
-      el.select();
-      navigator.clipboard.writeText(el.value).then(()=>{
-        const msg=document.getElementById('copiedMsg');
-        msg.style.display='inline';
-        setTimeout(()=>msg.style.display='none',2000);
-      });
+    function copy(btn){
+      var inp=btn.parentElement.querySelector('input');
+      inp.select();
+      navigator.clipboard.writeText(inp.value);
+      btn.textContent='Copied!';
+      setTimeout(function(){btn.textContent='Copy'},2000);
     }
   </script>
 </body>
@@ -287,124 +625,6 @@ app.get('/preview', (_req, res) => {
 
   res.set({ 'Content-Type': 'text/html; charset=utf-8' });
   res.send(html);
-});
-
-// ── NovaStar-compatible endpoints ──────────────────────────────────────
-// NovaStar RSS mode is TEXT ONLY. These endpoints bypass RSS entirely.
-
-// Option 1: Single rotating image — use in NovaStar "Image URL" or "Web Image" mode
-// Each request returns the next game's ticker as a raw PNG.
-// NovaStar fetches this URL on an interval and always gets a fresh image.
-let rotationIndex = 0;
-app.get('/ticker.png', async (_req, res) => {
-  if (currentGames.length === 0) {
-    res.status(503).set('Content-Type', 'text/plain').send('No games available');
-    return;
-  }
-
-  const game = currentGames[rotationIndex % currentGames.length];
-  rotationIndex++;
-
-  // Try cache first
-  const cached = imageCache.get(game.id);
-  if (cached) {
-    res.set({
-      'Content-Type': 'image/png',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-    });
-    res.send(cached);
-    return;
-  }
-
-  try {
-    const buffer = await renderTickerImage(game, logoCache);
-    await imageCache.set(game.id, buffer, game.updatedAt);
-    res.set({
-      'Content-Type': 'image/png',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-    });
-    res.send(buffer);
-  } catch (err) {
-    console.error('[ticker.png] render error:', err);
-    res.status(500).set('Content-Type', 'text/plain').send('Render failed');
-  }
-});
-
-// Option 2: Fullscreen HTML page — use in NovaStar "Web Page" / "URL" widget mode
-// Auto-rotates through all games with a crossfade transition. Self-contained, no JS deps.
-app.get('/ticker.html', (_req, res) => {
-  const { width, height } = config.display;
-
-  const imageUrls = currentGames.map(
-    (g) => `/api/image?id=${encodeURIComponent(g.id)}`
-  );
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=${width},height=${height},initial-scale=1"/>
-<style>
-*{margin:0;padding:0}
-html,body{width:${width}px;height:${height}px;overflow:hidden;background:#000}
-img{position:absolute;top:0;left:0;width:${width}px;height:${height}px;opacity:0;transition:opacity 0.5s ease}
-img.active{opacity:1}
-</style>
-</head>
-<body>
-${imageUrls.map((url, i) => `<img id="s${i}" src="${url}" ${i === 0 ? 'class="active"' : ''}/>`).join('\n')}
-<script>
-var imgs=${JSON.stringify(imageUrls)};
-var cur=0;
-var total=imgs.length;
-if(total>1){
-  setInterval(function(){
-    document.getElementById('s'+cur).className='';
-    cur=(cur+1)%total;
-    document.getElementById('s'+cur).className='active';
-    // Preload next with cache-bust to get fresh scores
-    var next=(cur+1)%total;
-    var el=document.getElementById('s'+next);
-    el.src=imgs[next]+'&t='+Date.now();
-  },8000);
-}
-// Refresh all images every 60s to pick up score changes
-setInterval(function(){
-  for(var i=0;i<total;i++){
-    var el=document.getElementById('s'+i);
-    el.src=imgs[i]+'&t='+Date.now();
-  }
-},60000);
-</script>
-</body>
-</html>`;
-
-  res.set({
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-cache',
-  });
-  res.send(html);
-});
-
-// Option 3: JSON playlist of all image URLs (for custom integrations)
-app.get('/playlist.json', (req, res) => {
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
-  const base = `${protocol}://${host}`;
-
-  const playlist = currentGames.map((g) => ({
-    id: g.id,
-    title: `${g.away.abbr} vs ${g.home.abbr}`,
-    imageUrl: `${base}/api/image?id=${encodeURIComponent(g.id)}`,
-    state: g.status.state,
-  }));
-
-  res.set({ 'Cache-Control': 'public, max-age=30' });
-  res.json({ games: playlist, count: playlist.length, updated: lastUpdate.toISOString() });
 });
 
 // Root redirect
@@ -417,7 +637,6 @@ if (!config.isVercel) {
   (async () => {
     await ensureInitialized();
 
-    // Background refresh only makes sense with a persistent server
     setInterval(() => {
       refreshData();
     }, config.cache.refreshIntervalMs);
@@ -425,8 +644,10 @@ if (!config.isVercel) {
     app.listen(config.server.port, config.server.host, () => {
       console.log('');
       console.log(`Server running at ${config.server.baseUrl}`);
+      console.log(`  Ticker:    ${config.server.baseUrl}/ticker.html`);
       console.log(`  RSS Feed:  ${config.server.baseUrl}/rss.xml`);
       console.log(`  Preview:   ${config.server.baseUrl}/preview`);
+      console.log(`  Games API: ${config.server.baseUrl}/api/games`);
       console.log(`  Health:    ${config.server.baseUrl}/health`);
       console.log('');
     });

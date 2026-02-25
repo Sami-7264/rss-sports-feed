@@ -7,14 +7,14 @@
       "abbr": "CHI",
       "color": "#CE1141",
       "record": "5-3",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/chi.png"
     },
     "away": {
       "name": "Philadelphia 76ers",
       "abbr": "PHI",
       "color": "#006BB6",
       "record": "6-2",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/phi.png"
     },
     "score": { "home": 113, "away": 111 },
     "status": { "state": "in_progress", "period": 4, "clock": "3:52" },
@@ -28,14 +28,14 @@
       "abbr": "BOS",
       "color": "#007A33",
       "record": "7-1",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png"
     },
     "away": {
       "name": "Los Angeles Lakers",
       "abbr": "LAL",
       "color": "#552583",
       "record": "4-4",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/lal.png"
     },
     "score": { "home": 98, "away": 102 },
     "status": { "state": "final" },
@@ -49,14 +49,14 @@
       "abbr": "MIA",
       "color": "#98002E",
       "record": "3-5",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png"
     },
     "away": {
       "name": "Golden State Warriors",
       "abbr": "GSW",
       "color": "#1D428A",
       "record": "5-3",
-      "logoUrl": ""
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nba/500/gs.png"
     },
     "score": { "home": 0, "away": 0 },
     "status": { "state": "pre", "detail": "7:30 PM ET" },
