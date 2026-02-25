@@ -289,6 +289,124 @@ app.get('/preview', (_req, res) => {
   res.send(html);
 });
 
+// ── NovaStar-compatible endpoints ──────────────────────────────────────
+// NovaStar RSS mode is TEXT ONLY. These endpoints bypass RSS entirely.
+
+// Option 1: Single rotating image — use in NovaStar "Image URL" or "Web Image" mode
+// Each request returns the next game's ticker as a raw PNG.
+// NovaStar fetches this URL on an interval and always gets a fresh image.
+let rotationIndex = 0;
+app.get('/ticker.png', async (_req, res) => {
+  if (currentGames.length === 0) {
+    res.status(503).set('Content-Type', 'text/plain').send('No games available');
+    return;
+  }
+
+  const game = currentGames[rotationIndex % currentGames.length];
+  rotationIndex++;
+
+  // Try cache first
+  const cached = imageCache.get(game.id);
+  if (cached) {
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    res.send(cached);
+    return;
+  }
+
+  try {
+    const buffer = await renderTickerImage(game, logoCache);
+    await imageCache.set(game.id, buffer, game.updatedAt);
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    res.send(buffer);
+  } catch (err) {
+    console.error('[ticker.png] render error:', err);
+    res.status(500).set('Content-Type', 'text/plain').send('Render failed');
+  }
+});
+
+// Option 2: Fullscreen HTML page — use in NovaStar "Web Page" / "URL" widget mode
+// Auto-rotates through all games with a crossfade transition. Self-contained, no JS deps.
+app.get('/ticker.html', (_req, res) => {
+  const { width, height } = config.display;
+
+  const imageUrls = currentGames.map(
+    (g) => `/api/image?id=${encodeURIComponent(g.id)}`
+  );
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=${width},height=${height},initial-scale=1"/>
+<style>
+*{margin:0;padding:0}
+html,body{width:${width}px;height:${height}px;overflow:hidden;background:#000}
+img{position:absolute;top:0;left:0;width:${width}px;height:${height}px;opacity:0;transition:opacity 0.5s ease}
+img.active{opacity:1}
+</style>
+</head>
+<body>
+${imageUrls.map((url, i) => `<img id="s${i}" src="${url}" ${i === 0 ? 'class="active"' : ''}/>`).join('\n')}
+<script>
+var imgs=${JSON.stringify(imageUrls)};
+var cur=0;
+var total=imgs.length;
+if(total>1){
+  setInterval(function(){
+    document.getElementById('s'+cur).className='';
+    cur=(cur+1)%total;
+    document.getElementById('s'+cur).className='active';
+    // Preload next with cache-bust to get fresh scores
+    var next=(cur+1)%total;
+    var el=document.getElementById('s'+next);
+    el.src=imgs[next]+'&t='+Date.now();
+  },8000);
+}
+// Refresh all images every 60s to pick up score changes
+setInterval(function(){
+  for(var i=0;i<total;i++){
+    var el=document.getElementById('s'+i);
+    el.src=imgs[i]+'&t='+Date.now();
+  }
+},60000);
+</script>
+</body>
+</html>`;
+
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-cache',
+  });
+  res.send(html);
+});
+
+// Option 3: JSON playlist of all image URLs (for custom integrations)
+app.get('/playlist.json', (req, res) => {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const base = `${protocol}://${host}`;
+
+  const playlist = currentGames.map((g) => ({
+    id: g.id,
+    title: `${g.away.abbr} vs ${g.home.abbr}`,
+    imageUrl: `${base}/api/image?id=${encodeURIComponent(g.id)}`,
+    state: g.status.state,
+  }));
+
+  res.set({ 'Cache-Control': 'public, max-age=30' });
+  res.json({ games: playlist, count: playlist.length, updated: lastUpdate.toISOString() });
+});
+
 // Root redirect
 app.get('/', (_req, res) => {
   res.redirect('/preview');
