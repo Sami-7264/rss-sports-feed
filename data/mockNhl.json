@@ -1,0 +1,53 @@
+[
+  {
+    "id": "nhl-bos-tor-20260227",
+    "league": "NHL",
+    "home": {
+      "name": "Toronto Maple Leafs", "abbr": "TOR", "color": "#00205B",
+      "record": "35-18-4",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/tor.png"
+    },
+    "away": {
+      "name": "Boston Bruins", "abbr": "BOS", "color": "#FFB81C",
+      "record": "30-22-6",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png"
+    },
+    "score": { "home": 3, "away": 2 },
+    "status": { "state": "in_progress", "period": 2, "clock": "14:22" },
+    "updatedAt": "2026-02-27T01:00:00Z"
+  },
+  {
+    "id": "nhl-col-nyr-20260227",
+    "league": "NHL",
+    "home": {
+      "name": "New York Rangers", "abbr": "NYR", "color": "#0038A8",
+      "record": "33-20-5",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png"
+    },
+    "away": {
+      "name": "Colorado Avalanche", "abbr": "COL", "color": "#6F263D",
+      "record": "36-17-3",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/col.png"
+    },
+    "score": { "home": 4, "away": 5 },
+    "status": { "state": "final" },
+    "updatedAt": "2026-02-26T23:30:00Z"
+  },
+  {
+    "id": "nhl-vgk-edm-20260227",
+    "league": "NHL",
+    "home": {
+      "name": "Edmonton Oilers", "abbr": "EDM", "color": "#041E42",
+      "record": "31-21-5",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/edm.png"
+    },
+    "away": {
+      "name": "Vegas Golden Knights", "abbr": "VGK", "color": "#B4975A",
+      "record": "34-19-4",
+      "logoUrl": "https://a.espncdn.com/i/teamlogos/nhl/500/vgk.png"
+    },
+    "score": { "home": 0, "away": 0 },
+    "status": { "state": "pre", "detail": "9:00 PM ET" },
+    "updatedAt": "2026-02-27T12:00:00Z"
+  }
+]

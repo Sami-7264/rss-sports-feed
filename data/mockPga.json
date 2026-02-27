@@ -1,0 +1,16 @@
+{
+  "id": "pga-players-2026",
+  "tournament": "THE PLAYERS",
+  "course": "TPC Sawgrass",
+  "round": "Round 3",
+  "state": "live",
+  "statusText": "Round 3 \u2022 In Progress",
+  "players": [
+    { "rank": 1, "name": "S. Scheffler", "score": "-14", "today": "66", "thru": "F" },
+    { "rank": 2, "name": "R. McIlroy",   "score": "-12", "today": "68", "thru": "F" },
+    { "rank": 3, "name": "X. Schauffele", "score": "-11", "today": "67", "thru": "16" },
+    { "rank": 4, "name": "C. Morikawa",  "score": "-10", "today": "69", "thru": "F" },
+    { "rank": 5, "name": "J. Spieth",    "score": "-9",  "today": "70", "thru": "14" },
+    { "rank": 6, "name": "W. Clark",     "score": "-8",  "today": "68", "thru": "F" }
+  ]
+}
