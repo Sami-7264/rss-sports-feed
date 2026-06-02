@@ -1,19 +1,18 @@
-# 🎓 Portfolio Website
+# 🎓 Portfolio Overview
 
-Welcome to my developer portfolio! I'm a full-stack web developer passionate about building modern, responsive web applications and delivering value through clean code and great UX.
+Welcome! This document provides a comprehensive overview of my development skills, experience, and projects.
 
 ---
 
 ## 👋 About Me
 
-I'm a versatile full-stack developer with expertise in:
-- **Frontend**: React, Vue.js, TypeScript, Next.js
-- **Backend**: Node.js, RESTful APIs
-- **Styling**: Tailwind CSS, responsive design
-- **Deployment**: Vercel, cloud platforms
-- **Data**: RSS feeds, real-time updates
+I'm a full-stack web developer passionate about building modern, responsive web applications and delivering value through clean code and great UX.
 
-I love creating user-focused applications that solve real problems and demonstrate technical excellence.
+### Core Expertise
+- **Frontend**: React, Vue.js, TypeScript, Next.js, Tailwind CSS
+- **Backend**: Node.js, RESTful APIs, PHP
+- **Data**: RSS feeds, real-time updates, database design
+- **Deployment**: Vercel, cloud platforms
 
 ---
 
@@ -29,6 +28,7 @@ A real-time sports news aggregator built with TypeScript and Next.js.
   - Mobile-responsive design
   - Production-optimized performance
   - Deployed on Vercel with continuous integration
+  - Professional documentation
 
 ### 2. **Social Feed** 👥
 Interactive social media feed application with Vue.js.
@@ -102,7 +102,7 @@ Educational platform for phonics learning built with Blade.
 - Git & GitHub
 - Vercel deployment
 - npm/yarn package management
-- VS Code, development workflow
+- VS Code development workflow
 
 ### Soft Skills
 - Problem-solving
@@ -114,12 +114,12 @@ Educational platform for phonics learning built with Blade.
 
 ## 📊 Project Statistics
 
-| Project | Stars | Language | Status |
-|---------|-------|----------|--------|
-| RSS Sports Feed | 0 | TypeScript | Active |
-| Social Feed | 0 | Vue | Active |
-| Auction | 0 | Blade | Stable |
-| Phonics Fair | 0 | Blade | Stable |
+| Project | Language | Type | Status |
+|---------|----------|------|--------|
+| RSS Sports Feed | TypeScript | Full-Stack | Active |
+| Social Feed | Vue | Frontend | Active |
+| Auction | Blade/PHP | Full-Stack | Stable |
+| Phonics Fair | Blade/PHP | Full-Stack | Stable |
 
 ---
 
@@ -168,7 +168,7 @@ All projects are open source and available under their respective licenses (typi
 
 ---
 
-**Last Updated**: February 27, 2026  
+**Last Updated**: June 2, 2026  
 **Status**: Actively Maintained ✨
 
 ---
