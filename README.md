@@ -1,220 +1,149 @@
 # RSS Sports Ticker
 
-High-resolution RSS sports ticker with PNG images, designed for **NovaStar media players** and LED displays.
+An RSS 2.0 sports ticker that renders broadcast-style PNG frames for NovaStar media players and LED displays.
 
-Each game is rendered as a broadcast-style ticker image and served via an RSS 2.0 feed with `<enclosure>` tags pointing to the PNG URLs.
+Live demo: https://rss-sports-feed.vercel.app (try `/preview` and `/rss.xml`)
 
-## Quick Start
+## Overview
+
+Each game is drawn server-side as a high-resolution ticker image and published in an RSS 2.0 feed whose `<enclosure>` tags point to the PNG URLs. NovaStar players (and any RSS-capable signage player) can subscribe to the feed and display the images directly. The same data is also available as HTML ticker pages, a JSON playlist, and a JSON API.
+
+The project ships with sample NBA, NHL, and PGA data. A provider interface is in place for connecting a live sports data API.
+
+## Features
+
+- **Server-side rendering**: broadcast-style ticker frames drawn with `@napi-rs/canvas`, rendered at 2x and downscaled for sharper LED output
+- **RSS 2.0 feed** with image enclosures, plus a JSON playlist and per-image endpoints
+- **Game states**: pre-game (scheduled time), live (score, period, clock, LIVE badge), and final
+- **Multi-sport feed**: NBA, NHL, and PGA leaderboard items aggregated and sorted with live items first
+- **Caching**: rendered PNGs cached in memory and on disk, regenerated only when game data changes; team logos downloaded once and cached
+- **Background refresh**: data re-fetched and stale images regenerated every 60 seconds
+- **Configurable display**: output resolution, scale factor, and font sizes in one config file
+- **Pluggable data**: mock provider by default, with an API provider stub for live data
+- **Deploys to Vercel** as a serverless function, or runs as a long-lived Node.js server
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Data
+        Mock["Mock provider<br/>data/*.json"]
+        Api["API provider<br/>(stub)"]
+        Agg["Feed aggregator<br/>NBA, NHL, PGA"]
+    end
+    Mock --> Refresh["Refresh loop<br/>every 60s"]
+    Api -.-> Refresh
+    Refresh --> Render["Ticker renderer<br/>@napi-rs/canvas"]
+    Logos["Logo cache"] --> Render
+    Render --> Cache[("Image cache<br/>memory + disk")]
+    Cache --> Server["Express server"]
+    Agg --> Server
+    Server --> RSS["/rss.xml"]
+    Server --> PNG["/images/:id.png, /api/image"]
+    Server --> Pages["/preview, /ticker.html, /wide.html"]
+    Server --> JSON["/api/games, /api/feed, /playlist.json"]
+    RSS --> Player["NovaStar player / LED display"]
+```
+
+### Endpoints
+
+| Path | Purpose |
+|---|---|
+| `/rss.xml` | RSS 2.0 feed with PNG enclosures |
+| `/images/:id.png` | Rendered ticker image for one game |
+| `/api/image?id=` | On-demand image, served from cache or rendered fresh |
+| `/ticker.png` | Single ticker image |
+| `/playlist.json` | JSON playlist of image URLs |
+| `/api/games` | Current game data |
+| `/api/feed` | Aggregated multi-sport feed |
+| `/preview` | Browser preview of all frames |
+| `/ticker.html`, `/wide.html` | HTML ticker pages |
+| `/health` | Health check |
+
+## Tech stack
+
+TypeScript, Node.js, Express, `@napi-rs/canvas`, Vercel serverless functions.
+
+## Getting started
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open in your browser:
+Then open `http://localhost:3000/preview` or `http://localhost:3000/rss.xml`.
 
-| Endpoint | URL |
-|---|---|
-| **Preview page** | http://localhost:3000/preview |
-| **RSS feed** | http://localhost:3000/rss.xml |
-| **Health check** | http://localhost:3000/health |
-| **Single image** | http://localhost:3000/images/nba-phi-chi-20260224.png |
+### Environment variables
 
-## Prerequisites
-
-- **Node.js** >= 18
-- **npm** >= 9
-- **canvas** system dependencies (usually pre-built binaries work out of the box):
-  - macOS: `brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman`
-  - Ubuntu/Debian: `sudo apt-get install build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev`
-  - Windows: See [node-canvas wiki](https://github.com/Automattic/node-canvas/wiki/Installation:-Windows)
-
-## Configuration
-
-All settings are in [`src/config.ts`](src/config.ts).
-
-### Change Resolution
-
-Edit the `display` section:
-
-```ts
-display: {
-  width: 384,      // target output width in pixels
-  height: 192,     // target output height in pixels
-  scaleFactor: 2,  // render at 2x then downscale (sharper on LED)
-}
-```
-
-For a 5ft/6ft LED display, increase to `768x384` or higher:
-
-```ts
-display: {
-  width: 768,
-  height: 384,
-  scaleFactor: 2,  // renders at 1536x768, outputs 768x384
-}
-```
-
-Adjust font sizes proportionally in the `fonts` section when changing resolution.
-
-### Environment Variables
-
-| Variable | Default | Description |
+| Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `3000` | Server port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `BASE_URL` | `http://localhost:3000` | Public URL for RSS enclosure links |
+| `BASE_URL` | `http://localhost:3000` | Public URL used in RSS enclosure links |
 | `DATA_PROVIDER` | `mock` | `mock` or `api` |
-| `SPORTS_API_KEY` | _(empty)_ | API key for live sports data |
+| `SPORTS_API_KEY` | empty | Key for a live sports data API |
 
-## Adding Teams / Logos / Colors
+### Configuration
 
-Edit [`data/mockGames.json`](data/mockGames.json):
+Display and font settings live in [`src/config.ts`](src/config.ts):
 
-```json
-{
-  "id": "nba-phi-chi-20260224",
-  "league": "NBA",
-  "home": {
-    "name": "Chicago Bulls",
-    "abbr": "CHI",
-    "color": "#CE1141",
-    "record": "5-3",
-    "logoUrl": "https://example.com/chi-logo.png"
-  },
-  "away": { ... },
-  "score": { "home": 113, "away": 111 },
-  "status": { "state": "in_progress", "period": 4, "clock": "3:52" },
-  "updatedAt": "2026-02-24T20:30:00Z"
+```ts
+display: {
+  width: 384,      // output width in pixels
+  height: 192,     // output height in pixels
+  scaleFactor: 2,  // render at 2x, then downscale
 }
 ```
 
-- **`color`**: hex color for the team (used for name text and accent bars)
-- **`logoUrl`**: URL to a PNG/JPG logo image. Leave empty `""` for a fallback circle with the team abbreviation.
-- **`record`**: optional win-loss record shown below the team abbreviation
-- Logos are cached to `./storage/logos/` after first download.
+For larger LED panels, increase the resolution (for example `768x384`) and scale the font sizes proportionally.
 
-### Game Status States
+### Game data
 
-| `state` | Meaning | Display |
-|---|---|---|
-| `pre` | Pre-game / scheduled | Shows "VS" and scheduled time |
-| `in_progress` | Live | Shows scores, period, clock, "LIVE" badge |
-| `final` | Completed | Shows final scores, "FINAL" badge |
+Sample data is in `data/mockGames.json`, `data/mockNhl.json`, and `data/mockPga.json`. Each team entry takes a `name`, `abbr`, hex `color`, optional `record`, and optional `logoUrl` (an empty value renders a fallback badge with the abbreviation).
 
-## Switching to a Real Sports API
+### Connecting a live data source
 
-1. Set `DATA_PROVIDER=api` in your environment (or edit `config.ts`)
-2. Set `SPORTS_API_KEY=your_key`
-3. Edit [`src/dataProviders/apiProvider.ts`](src/dataProviders/apiProvider.ts):
-   - Implement the `fetchGames()` method to call your API
-   - Map the API response to the `Game[]` interface defined in `src/types.ts`
-4. The rest of the pipeline (rendering, RSS, caching) works automatically
+1. Implement `fetchGames()` in [`src/dataProviders/apiProvider.ts`](src/dataProviders/apiProvider.ts) and map the response to the `Game` interface in `src/types.ts`.
+2. Set `DATA_PROVIDER=api` and `SPORTS_API_KEY`.
 
-Compatible APIs include ESPN, SportsData.io, The Sports DB, or any source you can map to the `Game` interface.
+Rendering, caching, and the RSS feed work unchanged.
 
-## How to Share a Test Link with Client
+### NovaStar setup
 
-To let a client test the RSS feed on their NovaStar LED player remotely, expose your local server via a tunnel:
+1. Run the server where the player can reach it, and set `BASE_URL` to that address.
+2. In the NovaStar software, add an RSS media source pointing to `<BASE_URL>/rss.xml`.
 
-### Option A: ngrok (recommended)
+For remote testing, expose a local server with a tunnel such as `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`, and set `BASE_URL` to the public URL it prints.
 
-```bash
-# Install (once)
-npm install -g ngrok
-# Or: brew install ngrok
-
-# Start the tunnel (while your dev server is running)
-ngrok http 3000
-```
-
-ngrok will print a public URL like `https://a1b2c3d4.ngrok-free.app`. Give the client:
-
-```
-RSS Feed:  https://a1b2c3d4.ngrok-free.app/rss.xml
-Preview:   https://a1b2c3d4.ngrok-free.app/preview
-```
-
-**Important:** Update `BASE_URL` so the RSS enclosure image URLs point to the public address:
-
-```bash
-BASE_URL=https://a1b2c3d4.ngrok-free.app npm run dev
-```
-
-### Option B: Cloudflare Tunnel
-
-```bash
-# Install (once)
-brew install cloudflared
-
-# Start the tunnel
-cloudflared tunnel --url http://localhost:3000
-```
-
-Same idea — use the printed URL as `BASE_URL` and give it to the client.
-
-### Option C: Local network
-
-If the client's NovaStar player is on the same LAN:
-
-```bash
-# Find your local IP
-ifconfig | grep "inet " | grep -v 127.0.0.1
-
-# Start with that as the base URL
-BASE_URL=http://192.168.1.100:3000 npm run dev
-```
-
-Give the client: `http://192.168.1.100:3000/rss.xml`
-
-## NovaStar Integration
-
-1. Run the server on a machine accessible to the NovaStar player
-2. Set `BASE_URL` to the server's network address (e.g., `http://192.168.1.100:3000`)
-3. In NovaStar software, add an RSS media source pointing to `http://<server>:3000/rss.xml`
-4. The player will fetch the feed and display the `<enclosure>` PNG images
-
-## Project Structure
-
-```
-rss-sports-feed/
-├── src/
-│   ├── server.ts                 # Express server + orchestration
-│   ├── config.ts                 # All configurable settings
-│   ├── types.ts                  # TypeScript interfaces
-│   ├── dataProviders/
-│   │   ├── mockProvider.ts       # Reads from mockGames.json
-│   │   └── apiProvider.ts        # Live API provider (stub)
-│   ├── render/
-│   │   └── renderTicker.ts       # Canvas-based image renderer
-│   ├── rss/
-│   │   └── generateRss.ts        # RSS 2.0 XML generator
-│   └── utils/
-│       ├── cache.ts              # Image cache (memory + disk)
-│       └── logoCache.ts          # Team logo downloader/cache
-├── data/
-│   └── mockGames.json            # Sample game data (3 games)
-├── storage/
-│   ├── images/                   # Generated PNG cache
-│   └── logos/                    # Downloaded logo cache
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-## How It Works
-
-1. **Data fetch**: The configured provider (mock or API) returns a `Game[]` array
-2. **Rendering**: Each game is drawn onto a `node-canvas` surface as a broadcast-style ticker
-3. **Caching**: Generated PNGs are cached in memory and on disk; only regenerated when data changes
-4. **RSS feed**: An RSS 2.0 XML document is generated with `<enclosure>` tags pointing to each image URL
-5. **Auto-refresh**: A background interval re-fetches data and regenerates stale images every 60 seconds
-
-## Scripts
+### Scripts
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start with auto-reload (tsx watch) |
+| `npm run dev` | Start with auto-reload |
 | `npm start` | Start without auto-reload |
 | `npm run build` | Compile TypeScript to `dist/` |
-| `npm run serve` | Run compiled JS from `dist/` |
+| `npm run serve` | Run the compiled build |
+
+Hosting options (Render, a VPS with PM2, and others) are covered in [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md).
+
+## Project structure
+
+```
+api/index.ts               Vercel serverless entry
+src/
+  server.ts                Express server, refresh loop, routes
+  config.ts                Display, font, and refresh settings
+  types.ts                 Shared interfaces
+  dataProviders/           Mock provider and live API stub
+  providers/               NBA, NHL, and PGA feed providers
+  feed/feedAggregator.ts   Multi-sport aggregation with caching
+  render/renderTicker.ts   Canvas ticker renderer
+  rss/generateRss.ts       RSS 2.0 generator
+  utils/                   Image cache, logo cache, league logo maps
+data/                      Sample game data
+fonts/                     Inter font files
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
